@@ -1,46 +1,66 @@
 name: Release
 
 on:
-  push:
-    branches:
-      - main
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version bump type'
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
 
 jobs:
   release:
-    name: Release
+    name: 'Release to npm'
     timeout-minutes: 30
     runs-on: ubuntu-latest
-    concurrency:
-      group: ${{ github.workflow }}-${{ github.ref }}
-      cancel-in-progress: true
-    if: github.repository_owner == 'evanderkoogh'
+    permissions:
+      contents: write
+      id-token: write
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: pnpm/action-setup@v4
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: yarn/action-setup@v4
+
       - name: Use Node.js 20
         uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: 'Install NPM Dependencies'
-        run: 'pnpm install --frozen-lockfile --child-concurrency=10'
-      - name: Create Release Pull Request or Publish to npm
-        id: changesets
-        uses: changesets/action@v1
-        with:
-          publish: pnpm release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-      - name: Update NPM Tags
-        # Changesets does not publish RC as latest. This will
-        # tag RC to latest until we get to a stable release.
-        if: steps.changesets.outputs.published == 'true'
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          cache: 'yarn'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: 'Install dependencies'
+        run: 'yarn install --frozen-lockfile'
+
+      - name: 'Configure git'
         run: |
-          set -eux
-          PUBLISHED_VERSION=$(echo '${{ steps.changesets.outputs.publishedPackages }}' \
-            | jq -er '[.[] | select(.name=="@microlabs/otel-cf-workers")][0].version')
-          npm dist-tag add @microlabs/otel-cf-workers@${PUBLISHED_VERSION} latest
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: 'Version bump'
+        run: 'yarn version --${{ inputs.version }} --no-git-tag-version'
+
+      - name: 'Build'
+        run: 'yarn build'
+
+      - name: 'Run tests'
+        run: 'yarn test'
+
+      - name: 'Commit version bump'
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          git add package.json
+          git commit -m "Release v${VERSION}"
+          git tag "v${VERSION}"
+          git push origin main --tags
+
+      - name: 'Publish to npm'
+        run: 'yarn publish --access public'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -16,10 +16,7 @@ import { instrumentEnv } from './instrumentation/env.js'
 import { versionAttributes } from './instrumentation/version.js'
 import { PromiseTracker, proxyExecutionContext } from './instrumentation/common.js'
 import { emailInstrumentation } from './instrumentation/email.js'
-
-//@ts-ignore
-import * as versions from '../versions.json'
-//@ts-ignore
+import { PACKAGE_VERSION } from './constants.js'
 import { env } from 'cloudflare:workers'
 
 type FetchHandler = ExportedHandlerFetchHandler<unknown, unknown>
@@ -64,9 +61,8 @@ const createResource = (config: ResolvedTraceConfig, versionMeta?: WorkerVersion
 		'cloud.region': 'earth',
 		'faas.max_memory': 134217728,
 		'telemetry.sdk.language': 'js',
-		'telemetry.sdk.name': '@microlabs/otel-cf-workers',
-		'telemetry.sdk.version': versions['@microlabs/otel-cf-workers'],
-		'telemetry.sdk.build.node_version': versions['node'],
+		'telemetry.sdk.name': '@inference-net/otel-cf-workers',
+		'telemetry.sdk.version': PACKAGE_VERSION,
 		'cf.worker.version.id': versionMeta?.id,
 		'cf.worker.version.tag': versionMeta?.tag,
 		'cf.worker.version.timestamp': versionMeta?.timestamp,

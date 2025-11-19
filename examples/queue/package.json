@@ -16,6 +16,6 @@
 		"replit-run-command": "npm run start"
 	},
 	"dependencies": {
-		"@microlabs/otel-cf-workers": "^0.0.5"
+		"@inference-net/otel-cf-workers": "^0.0.5"
 	}
 }

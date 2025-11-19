@@ -5,7 +5,7 @@ An OpenTelemetry compatible library for instrumenting and exporting traces from 
 ## Getting started
 
 ```bash
-npm install @microlabs/otel-cf-workers @opentelemetry/api
+yarn add @inference-net/otel-cf-workers
 ```
 
 > [!IMPORTANT]
@@ -24,7 +24,7 @@ For a simple setup example with configuration examples, have a look at the [Quic
 
 ```typescript
 import { trace } from '@opentelemetry/api'
-import { instrument, ResolveConfigFn } from '@microlabs/otel-cf-workers'
+import { instrument, ResolveConfigFn } from '@inference-net/otel-cf-workers'
 
 export interface Env {
 	HONEYCOMB_API_KEY: string
@@ -68,7 +68,7 @@ See the quick start code sample for an example of how it works.
 Instrumenting Durable Objects work very similar to the regular Worker auto-instrumentation. Instead of wrapping the handler in an `instrument` call, you wrap the Durable Object class with the `instrumentDO` function.
 
 ```typescript
-import { instrumentDO, PartialTraceConfig } from '@microlabs/otel-cf-workers'
+import { instrumentDO, PartialTraceConfig } from '@inference-net/otel-cf-workers'
 
 const config: ResolveConfigFn = (env: Env, _trigger) => {
 	return {

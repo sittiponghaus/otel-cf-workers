@@ -1,4 +1,4 @@
-# @microlabs/otel-cf-workers
+# @inference-net/otel-cf-workers
 
 ## 1.0.0-rc.52
 

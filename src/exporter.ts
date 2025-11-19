@@ -3,9 +3,7 @@ import { OTLPExporterError } from '@opentelemetry/otlp-exporter-base'
 import { JsonTraceSerializer } from '@opentelemetry/otlp-transformer'
 import { SpanExporter } from '@opentelemetry/sdk-trace-base'
 import { unwrap } from './wrap.js'
-
-//@ts-ignore
-import * as versions from '../versions.json'
+import { PACKAGE_NAME, PACKAGE_VERSION } from './constants.js'
 
 export interface OTLPExporterConfig {
 	url: string
@@ -15,7 +13,7 @@ export interface OTLPExporterConfig {
 const defaultHeaders: Record<string, string> = {
 	accept: 'application/json',
 	'content-type': 'application/json',
-	'user-agent': `Cloudflare Worker @microlabs/otel-cf-workers v${versions['@microlabs/otel-cf-workers']}`,
+	'user-agent': `Cloudflare Worker ${PACKAGE_NAME} v${PACKAGE_VERSION}`,
 }
 
 export class OTLPExporter implements SpanExporter {
