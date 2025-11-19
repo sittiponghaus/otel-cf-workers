@@ -126,5 +126,6 @@ function parseLogsConfig(supplied: LogsConfig): ResolvedLogsConfig {
 		instrumentation: {
 			instrumentConsole: supplied.instrumentation?.instrumentConsole ?? false,
 		},
+		level: supplied.level ?? 'info',
 	}
 }
