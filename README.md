@@ -1,6 +1,6 @@
 # otel-cf-workers
 
-OpenTelemetry instrumentation for Cloudflare Workers with automatic tracing for handlers, bindings, and distributed traces.
+OpenTelemetry instrumentation for Cloudflare Workers with automatic **tracing** and **logging** for handlers, bindings, and distributed traces.
 
 ## Installation
 
@@ -17,6 +17,8 @@ compatibility_flags = ["nodejs_compat"]
 ```
 
 ## Quick Start
+
+### Tracing Only
 
 ```typescript
 import { trace } from '@opentelemetry/api'
@@ -46,13 +48,66 @@ const handler = {
 
 const config: ResolveConfigFn = (env: Env, _trigger) => {
 	return {
-		exporter: {
-			url: env.SIGNOZ_ENDPOINT,
-			headers: { 'signoz-access-token': env.SIGNOZ_ACCESS_TOKEN },
-		},
 		service: { name: 'my-worker' },
+		trace: {
+			exporter: {
+				url: env.SIGNOZ_ENDPOINT,
+				headers: { 'signoz-access-token': env.SIGNOZ_ACCESS_TOKEN },
+			},
+		},
 	}
 }
+
+export default instrument(handler, config)
+```
+
+### Tracing + Logging
+
+```typescript
+import { trace } from '@opentelemetry/api'
+import { instrument, getLogger, OTLPTransport, ConsoleTransport } from '@inference-net/otel-cf-workers'
+
+const handler = {
+	async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+		const logger = getLogger('my-app')
+
+		// Logs automatically include trace context (trace ID, span ID)
+		logger.info('Processing request', {
+			'http.url': request.url,
+			'user.id': '123',
+		})
+
+		try {
+			await env.MY_KV.get('key')
+			logger.debug('KV operation complete')
+
+			return new Response('OK')
+		} catch (error) {
+			// Error logs automatically extract exception info
+			logger.error(error as Error)
+			return new Response('Error', { status: 500 })
+		}
+	},
+}
+
+const config: ResolveConfigFn = (env: Env, _trigger) => ({
+	service: { name: 'my-worker' },
+	trace: {
+		exporter: {
+			url: `${env.OTEL_ENDPOINT}/v1/traces`,
+			headers: { 'x-api-key': env.API_KEY },
+		},
+	},
+	logs: {
+		transports: [
+			new OTLPTransport({
+				url: `${env.OTEL_ENDPOINT}/v1/logs`,
+				headers: { 'x-api-key': env.API_KEY },
+			}),
+			new ConsoleTransport({ pretty: true }), // Also log to console
+		],
+	},
+})
 
 export default instrument(handler, config)
 ```
@@ -87,6 +142,8 @@ export const MyDO = instrumentDO(MyDurableObject, config)
 
 ### ✅ Fully Supported
 
+**Tracing:**
+
 - **Distributed Tracing**: Automatic W3C Trace Context propagation across services
 - **Semantic Conventions**: Full support for OpenTelemetry semantic conventions (v1.28.0+)
   - `db.query.text` - Database queries and keys
@@ -101,6 +158,19 @@ export const MyDO = instrumentDO(MyDurableObject, config)
 - **Sampling**: Both head and tail sampling strategies
 - **Exporters**: OTLP/HTTP (JSON) format
 - **Span Processors**: Custom trace-based batch processing
+
+**Logging:**
+
+- **Structured Logging**: OpenTelemetry Logs API with convenience methods
+- **Automatic Trace Correlation**: Logs include trace ID and span ID from active spans
+- **Child Loggers**: Inherit attributes from parent loggers for context propagation
+- **Multiple Transports**: Send logs to OTLP backends, console, or custom destinations
+- **Batching Strategies**: Configurable batching (immediate or size-based)
+- **Severity Levels**: Standard OpenTelemetry severity levels (TRACE, DEBUG, INFO, WARN, ERROR, FATAL)
+- **Console Instrumentation**: Optional capture of `console.log()`, `console.error()`, etc.
+- **Custom Transports**: Extensible transport interface for custom log destinations
+
+📖 **See [LOGS.md](./LOGS.md) for complete logging documentation**
 
 ### Cloudflare-Specific Attributes
 
@@ -169,17 +239,30 @@ In addition to OpenTelemetry standard attributes, we capture Cloudflare-specific
 
 ```typescript
 const config: ResolveConfigFn = (env: Env, trigger) => ({
-	exporter: {
-		url: env.SIGNOZ_ENDPOINT,
-		headers: { 'signoz-access-token': env.SIGNOZ_ACCESS_TOKEN },
-	},
 	service: {
 		name: 'my-service',
 		version: '1.0.0', // Optional
 		namespace: 'production', // Optional
 	},
+	trace: {
+		exporter: {
+			url: env.SIGNOZ_ENDPOINT,
+			headers: { 'signoz-access-token': env.SIGNOZ_ACCESS_TOKEN },
+		},
+	},
+	// Logs are optional
+	logs: {
+		transports: [new OTLPTransport({ url: env.LOGS_ENDPOINT })],
+	},
 })
 ```
+
+**Note:** Both `trace` and `logs` are optional. You can configure:
+
+- Tracing only
+- Logging only
+- Both tracing and logging
+- Neither (no telemetry)
 
 ### Sampling
 
@@ -315,11 +398,21 @@ const handler = {
 
 See the [examples directory](./examples) for complete working examples:
 
+**Tracing:**
+
 - [Basic Worker](./examples/worker) - HTTP handler with KV and D1
 - [Quickstart Guide](./examples/quickstart/QUICKSTART_GUIDE.md) - Step-by-step tutorial
 
+**Logging:**
+
+- [Basic Logging](./examples/logs-basic.ts) - Simple logging setup
+- [Advanced Logging](./examples/logs-advanced.ts) - Traces + logs correlation
+- [Logs Only](./examples/logs-only.ts) - Logging without tracing
+- [Child Loggers](./examples/logs-child-loggers.ts) - Context inheritance with child loggers
+
 ## Resources
 
+- [Logging Documentation](./LOGS.md) - Complete guide to OpenTelemetry Logs
 - [OpenTelemetry Documentation](https://opentelemetry.io/docs/)
 - [Cloudflare Workers Documentation](https://developers.cloudflare.com/workers/)
 - [Semantic Conventions](https://opentelemetry.io/docs/specs/semconv/)

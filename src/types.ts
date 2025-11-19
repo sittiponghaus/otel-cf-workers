@@ -3,11 +3,12 @@ import { ReadableSpan, Sampler, SpanExporter, SpanProcessor } from '@opentelemet
 import { OTLPExporterConfig } from './exporter.js'
 import { FetchHandlerConfig, FetcherConfig } from './instrumentation/fetch.js'
 import { TailSampleFn } from './sampling.js'
+import { LogTransport, LogRecordProcessor, BatchConfig as LogBatchConfig } from './logs/types.js'
 
 export type OrPromise<T extends any> = T | Promise<T>
 
-export type ResolveConfigFn<Env = any> = (env: Env, trigger: Trigger) => TraceConfig
-export type ConfigurationOption = TraceConfig | ResolveConfigFn
+export type ResolveConfigFn<Env = any> = (env: Env, trigger: Trigger) => WorkerOtelConfig
+export type ConfigurationOption = WorkerOtelConfig | ResolveConfigFn
 
 export type PostProcessorFn = (spans: ReadableSpan[]) => ReadableSpan[]
 
@@ -55,14 +56,21 @@ export interface InstrumentationOptions {
 	instrumentGlobalCache?: boolean
 }
 
+export type BatchStrategy = 'trace' | 'immediate' | 'size'
+
+export interface TraceBatchConfig {
+	strategy?: BatchStrategy
+	maxQueueSize?: number
+	maxExportBatchSize?: number
+}
+
 interface TraceConfigBase {
-	service: ServiceConfig
 	handlers?: HandlerConfig
 	fetch?: FetcherConfig
 	postProcessor?: PostProcessorFn
 	sampling?: SamplingConfig
-	propagator?: TextMapPropagator
 	instrumentation?: InstrumentationOptions
+	batching?: TraceBatchConfig
 }
 
 interface TraceConfigExporter extends TraceConfigBase {
@@ -85,8 +93,30 @@ export interface ResolvedTraceConfig extends TraceConfigBase {
 	postProcessor: PostProcessorFn
 	sampling: Required<SamplingConfig<Sampler>>
 	spanProcessors: SpanProcessor[]
-	propagator: TextMapPropagator
 	instrumentation: InstrumentationOptions
+	batching: TraceBatchConfig
+}
+
+export interface LogsInstrumentationOptions {
+	instrumentConsole?: boolean
+}
+
+export interface LogsConfig {
+	transports?: LogTransport[]
+	batching?: LogBatchConfig
+	instrumentation?: LogsInstrumentationOptions
+}
+
+export interface ResolvedLogsConfig {
+	processors: LogRecordProcessor[]
+	instrumentation: LogsInstrumentationOptions
+}
+
+export interface WorkerOtelConfig {
+	service: ServiceConfig
+	trace?: TraceConfig
+	logs?: LogsConfig
+	propagator?: TextMapPropagator
 }
 
 export interface DOConstructorTrigger {

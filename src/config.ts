@@ -6,24 +6,45 @@ import {
 	ResolvedTraceConfig,
 	TraceConfig,
 	Trigger,
+	WorkerOtelConfig,
+	ResolvedLogsConfig,
+	LogsConfig,
 } from './types.js'
-import { W3CTraceContextPropagator } from '@opentelemetry/core'
 import { ReadableSpan, Sampler, SpanExporter } from '@opentelemetry/sdk-trace-base'
 
 import { OTLPExporter } from './exporter.js'
 import { multiTailSampler, isHeadSampled, isRootErrorSpan, createSampler } from './sampling.js'
 import { BatchTraceSpanProcessor } from './spanprocessor.js'
+import { MultiTransportLogRecordProcessor } from './logs/logprocessor.js'
 
-const configSymbol = Symbol('Otel Workers Tracing Configuration')
+const traceConfigSymbol = Symbol('Otel Workers Tracing Configuration')
+const logsConfigSymbol = Symbol('Otel Workers Logs Configuration')
 
-export type Initialiser = (env: Record<string, unknown>, trigger: Trigger) => ResolvedTraceConfig
+export interface ResolvedConfig {
+	trace?: ResolvedTraceConfig
+	logs?: ResolvedLogsConfig
+}
 
-export function setConfig(config: ResolvedTraceConfig, ctx = context.active()) {
-	return ctx.setValue(configSymbol, config)
+export type Initialiser = (env: Record<string, unknown>, trigger: Trigger) => ResolvedConfig
+
+export function setConfig(config: ResolvedConfig, ctx = context.active()) {
+	let newCtx = ctx
+	if (config.trace) {
+		newCtx = newCtx.setValue(traceConfigSymbol, config.trace)
+	}
+	if (config.logs) {
+		newCtx = newCtx.setValue(logsConfigSymbol, config.logs)
+	}
+	return newCtx
 }
 
 export function getActiveConfig(): ResolvedTraceConfig | undefined {
-	const config = context.active().getValue(configSymbol) as ResolvedTraceConfig
+	const config = context.active().getValue(traceConfigSymbol) as ResolvedTraceConfig
+	return config || undefined
+}
+
+export function getActiveLogsConfig(): ResolvedLogsConfig | undefined {
+	const config = context.active().getValue(logsConfigSymbol) as ResolvedLogsConfig
 	return config || undefined
 }
 
@@ -35,7 +56,23 @@ function isSampler(sampler: Sampler | ParentRatioSamplingConfig): sampler is Sam
 	return !!(sampler as Sampler).shouldSample
 }
 
-export function parseConfig(supplied: TraceConfig): ResolvedTraceConfig {
+export function parseConfig(supplied: WorkerOtelConfig): ResolvedConfig {
+	const config: ResolvedConfig = {}
+
+	// Parse trace config if provided
+	if (supplied.trace) {
+		config.trace = parseTraceConfig(supplied.trace, supplied.propagator)
+	}
+
+	// Parse logs config if provided
+	if (supplied.logs) {
+		config.logs = parseLogsConfig(supplied.logs)
+	}
+
+	return config
+}
+
+function parseTraceConfig(supplied: TraceConfig, propagator?: any): ResolvedTraceConfig {
 	if (isSpanProcessorConfig(supplied)) {
 		const headSampleConf = supplied.sampling?.headSampler || { ratio: 1 }
 		const headSampler = isSampler(headSampleConf) ? headSampleConf : createSampler(headSampleConf)
@@ -59,18 +96,35 @@ export function parseConfig(supplied: TraceConfig): ResolvedTraceConfig {
 				headSampler,
 				tailSampler: supplied.sampling?.tailSampler || multiTailSampler([isHeadSampled, isRootErrorSpan]),
 			},
-			service: supplied.service,
 			spanProcessors,
-			propagator: supplied.propagator || new W3CTraceContextPropagator(),
 			instrumentation: {
 				instrumentGlobalCache: supplied.instrumentation?.instrumentGlobalCache ?? true,
 				instrumentGlobalFetch: supplied.instrumentation?.instrumentGlobalFetch ?? true,
+			},
+			batching: {
+				strategy: supplied.batching?.strategy ?? 'trace',
+				maxQueueSize: supplied.batching?.maxQueueSize,
+				maxExportBatchSize: supplied.batching?.maxExportBatchSize,
 			},
 		}
 	} else {
 		const exporter = isSpanExporter(supplied.exporter) ? supplied.exporter : new OTLPExporter(supplied.exporter)
 		const spanProcessors = [new BatchTraceSpanProcessor(exporter)]
-		const newConfig = Object.assign(supplied, { exporter: undefined, spanProcessors }) as TraceConfig
-		return parseConfig(newConfig)
+		const newConfig = Object.assign({}, supplied, { exporter: undefined, spanProcessors }) as TraceConfig
+		return parseTraceConfig(newConfig, propagator)
+	}
+}
+
+function parseLogsConfig(supplied: LogsConfig): ResolvedLogsConfig {
+	const processors =
+		supplied.transports && supplied.transports.length > 0
+			? [new MultiTransportLogRecordProcessor(supplied.transports, supplied.batching)]
+			: []
+
+	return {
+		processors,
+		instrumentation: {
+			instrumentConsole: supplied.instrumentation?.instrumentConsole ?? false,
+		},
 	}
 }

@@ -269,3 +269,49 @@ export const ATTR_CLOUDFLARE_IMAGES_REQUIRE_SIGNED_URLS = 'cloudflare.images.req
 export const ATTR_CLOUDFLARE_RATE_LIMIT_KEY = 'cloudflare.rate_limit.key'
 export const ATTR_CLOUDFLARE_RATE_LIMIT_ALLOWED = 'cloudflare.rate_limit.allowed'
 export const ATTR_CLOUDFLARE_RATE_LIMIT_SUCCESS = 'cloudflare.rate_limit.success'
+
+// ============================================================================
+// OTLP Exporter Constants (shared by traces and logs)
+// ============================================================================
+
+export const DEFAULT_OTLP_HEADERS: Record<string, string> = {
+	accept: 'application/json',
+	'content-type': 'application/json',
+	'user-agent': `Cloudflare Worker ${PACKAGE_NAME} v${PACKAGE_VERSION}`,
+}
+
+export const DEFAULT_TRACE_ENDPOINT = '/v1/traces'
+export const DEFAULT_LOGS_ENDPOINT = '/v1/logs'
+
+// ============================================================================
+// Log Severity Levels (OpenTelemetry standard)
+// ============================================================================
+
+export const SEVERITY_NUMBERS = {
+	TRACE: 1,
+	TRACE2: 2,
+	TRACE3: 3,
+	TRACE4: 4,
+	DEBUG: 5,
+	DEBUG2: 6,
+	DEBUG3: 7,
+	DEBUG4: 8,
+	INFO: 9,
+	INFO2: 10,
+	INFO3: 11,
+	INFO4: 12,
+	WARN: 13,
+	WARN2: 14,
+	WARN3: 15,
+	WARN4: 16,
+	ERROR: 17,
+	ERROR2: 18,
+	ERROR3: 19,
+	ERROR4: 20,
+	FATAL: 21,
+	FATAL2: 22,
+	FATAL3: 23,
+	FATAL4: 24,
+} as const
+
+export type SeverityNumber = (typeof SEVERITY_NUMBERS)[keyof typeof SEVERITY_NUMBERS]

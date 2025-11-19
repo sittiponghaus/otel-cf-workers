@@ -1,9 +1,11 @@
 import { context as api_context, Exception, propagation, SpanStatusCode, trace } from '@opentelemetry/api'
 import { Resource, resourceFromAttributes } from '@opentelemetry/resources'
+import { W3CTraceContextPropagator } from '@opentelemetry/core'
 
-import { Initialiser, parseConfig, setConfig } from './config.js'
+import { Initialiser, parseConfig, setConfig, ResolvedConfig } from './config.js'
 import { WorkerTracerProvider } from './provider.js'
-import { Trigger, ResolvedTraceConfig, OrPromise, HandlerInstrumentation, ConfigurationOption } from './types.js'
+import { Trigger, OrPromise, HandlerInstrumentation, ConfigurationOption } from './types.js'
+import { WorkerLoggerProvider } from './logs/provider.js'
 import { unwrap } from './wrap.js'
 import { WorkerTracer } from './tracer.js'
 
@@ -53,7 +55,7 @@ function findVersionMeta(): WorkerVersionMetadata | undefined {
 	})
 }
 
-const createResource = (config: ResolvedTraceConfig, versionMeta?: WorkerVersionMetadata): Resource => {
+const createResource = (serviceConfig: any, versionMeta?: WorkerVersionMetadata): Resource => {
 	console.log({ versionMeta })
 	const workerResourceAttrs = {
 		'cloud.provider': 'cloudflare',
@@ -68,28 +70,48 @@ const createResource = (config: ResolvedTraceConfig, versionMeta?: WorkerVersion
 		'cf.worker.version.timestamp': versionMeta?.timestamp,
 	}
 	const serviceResource = resourceFromAttributes({
-		'service.name': config.service.name,
-		'service.namespace': config.service.namespace,
-		'service.version': config.service.version,
+		'service.name': serviceConfig.name,
+		'service.namespace': serviceConfig.namespace,
+		'service.version': serviceConfig.version,
 	})
 	const resource = resourceFromAttributes(workerResourceAttrs)
 	return resource.merge(serviceResource)
 }
 
 let initialised = false
-function init(config: ResolvedTraceConfig): void {
+function init(config: ResolvedConfig, serviceConfig: any, propagator: any): void {
 	if (!initialised) {
-		if (config.instrumentation.instrumentGlobalCache) {
-			instrumentGlobalCache()
-		}
-		if (config.instrumentation.instrumentGlobalFetch) {
-			instrumentGlobalFetch()
-		}
-		propagation.setGlobalPropagator(config.propagator)
-		const resource = createResource(config, findVersionMeta())
+		const resource = createResource(serviceConfig, findVersionMeta())
 
-		const provider = new WorkerTracerProvider(config.spanProcessors, resource)
-		provider.register()
+		// Initialize traces if configured
+		if (config.trace) {
+			if (config.trace.instrumentation.instrumentGlobalCache) {
+				instrumentGlobalCache()
+			}
+			if (config.trace.instrumentation.instrumentGlobalFetch) {
+				instrumentGlobalFetch()
+			}
+
+			const traceProvider = new WorkerTracerProvider(config.trace.spanProcessors, resource)
+			traceProvider.register()
+		}
+
+		// Initialize logs if configured
+		if (config.logs && config.logs.processors.length > 0) {
+			const logsProvider = new WorkerLoggerProvider(config.logs.processors, resource)
+			logsProvider.register()
+
+			// Instrument console if enabled
+			if (config.logs.instrumentation.instrumentConsole) {
+				import('./logs/console.js').then(({ instrumentConsole }) => {
+					instrumentConsole()
+				})
+			}
+		}
+
+		// Set global propagator
+		propagation.setGlobalPropagator(propagator)
+
 		initialised = true
 	}
 }
@@ -97,29 +119,42 @@ function init(config: ResolvedTraceConfig): void {
 function createInitialiser(config: ConfigurationOption): Initialiser {
 	if (typeof config === 'function') {
 		return (env, trigger) => {
-			const conf = parseConfig(config(env, trigger))
-			init(conf)
+			const userConfig = config(env, trigger)
+			const conf = parseConfig(userConfig)
+			const propagator = userConfig.propagator || new W3CTraceContextPropagator()
+			init(conf, userConfig.service, propagator)
 			return conf
 		}
 	} else {
 		return () => {
 			const conf = parseConfig(config)
-			init(conf)
+			const propagator = config.propagator || new W3CTraceContextPropagator()
+			init(conf, config.service, propagator)
 			return conf
 		}
 	}
 }
 
-export async function exportSpans(traceId: string, tracker?: PromiseTracker) {
+export async function exportTelemetry(traceId: string, tracker?: PromiseTracker) {
 	const tracer = trace.getTracer('export')
+	const { getLogger } = await import('./logs/provider.js')
+	const logger = getLogger('export')
+
+	// Export traces
 	if (tracer instanceof WorkerTracer) {
 		await scheduler.wait(1)
 		await tracker?.wait()
 		await tracer.forceFlush(traceId)
-	} else {
-		console.error('The global tracer is not of type WorkerTracer and can not export spans')
+	}
+
+	// Export logs
+	if (logger && typeof logger.forceFlush === 'function') {
+		await logger.forceFlush()
 	}
 }
+
+// Backward compatibility
+export const exportSpans = exportTelemetry
 
 type HandlerFnArgs<T extends Trigger, E extends Env> = (T | E | ExecutionContext)[]
 type OrderedHandlerFnArgs<T extends Trigger, E extends Env> = [trigger: T, env: E, ctx: ExecutionContext]
@@ -167,7 +202,7 @@ function createHandlerFlowFn<T extends Trigger, E extends Env, R extends any>(
 				throw error
 			} finally {
 				span.end()
-				context.waitUntil(exportSpans(span.spanContext().traceId, tracker))
+				context.waitUntil(exportTelemetry(span.spanContext().traceId, tracker))
 			}
 		})
 
