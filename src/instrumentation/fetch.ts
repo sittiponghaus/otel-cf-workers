@@ -193,10 +193,11 @@ function getParentContextFromRequest(request: Request) {
 }
 
 function updateSpanNameOnRoute(span: Span, request: IncomingRequest, result?: Response) {
-	const readable = span as unknown as ReadableSpan
-	if (readable.attributes['http.route']) {
+	const readable = span as unknown as ReadableSpan & { attributes?: Attributes }
+	const route = readable.attributes?.['http.route']
+	if (route) {
 		const method = request.method.toUpperCase()
-		span.updateName(`${method} ${readable.attributes['http.route']}`)
+		span.updateName(`${method} ${route}`)
 	}
 	// Set span status based on HTTP response status code
 	if (result) {
