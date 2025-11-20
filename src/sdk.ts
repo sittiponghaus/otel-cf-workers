@@ -183,13 +183,25 @@ function createHandlerFlowFn<T extends Trigger, E extends Env, R extends any>(
 			try {
 				const result = await handlerFn(instrumentedTrigger, proxiedEnv, proxiedCtx)
 
-				if (instrumentation.getAttributesFromResult) {
-					const attributes = instrumentation.getAttributesFromResult(result)
-					span.setAttributes(attributes)
-				}
+				// Check if this is a WebSocket upgrade request - if so, don't touch the response
+				const isWebSocketUpgrade =
+					isRequest(trigger) &&
+					trigger.headers.get('upgrade')?.toLowerCase() === 'websocket' &&
+					trigger.headers.has('sec-websocket-key')
 
-				if (instrumentation.executionSucces) {
-					instrumentation.executionSucces(span, trigger, result)
+				if (isWebSocketUpgrade) {
+					const logger = getLogger('handler')
+					logger.trace('WebSocket upgrade detected, closing span without reading response')
+					span.setStatus({ code: SpanStatusCode.OK })
+				} else {
+					if (instrumentation.getAttributesFromResult) {
+						const attributes = instrumentation.getAttributesFromResult(result)
+						span.setAttributes(attributes)
+					}
+
+					if (instrumentation.executionSucces) {
+						instrumentation.executionSucces(span, trigger, result)
+					}
 				}
 				return result
 			} catch (error) {
