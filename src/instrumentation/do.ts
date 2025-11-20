@@ -13,6 +13,7 @@ import { Initialiser, setConfig } from '../config.js'
 import { instrumentStorage } from './do-storage.js'
 import { DOConstructorTrigger } from '../types.js'
 import { ATTR_CLOUDFLARE_JSRPC_METHOD, ATTR_RPC_SYSTEM, ATTR_RPC_SERVICE, ATTR_RPC_METHOD } from '../constants.js'
+import { injectRpcContext, extractAndRemoveRpcContext } from './rpc-context.js'
 
 import { DurableObject as DurableObjectClass } from 'cloudflare:workers'
 
@@ -45,7 +46,11 @@ function instrumentRpcMethod(method: Function, methodName: string, nsName: strin
 
 			return tracer.startActiveSpan(spanName, options, async (span) => {
 				try {
-					const result = await Reflect.apply(target, thisArg, argArray)
+					// Inject trace context as first argument
+					const contextCarrier = injectRpcContext(api_context.active())
+					const argsWithContext = [contextCarrier, ...argArray]
+
+					const result = await Reflect.apply(target, thisArg, argsWithContext)
 					span.setStatus({ code: SpanStatusCode.OK })
 					return result
 				} catch (error) {
@@ -240,7 +245,13 @@ function instrumentRpcHandlerMethod(
 		async apply(target, thisArg, argArray) {
 			thisArg = unwrap(thisArg)
 			const config = initialiser(env, 'do-rpc')
-			const context = setConfig(config)
+
+			// Extract and remove RPC context carrier from arguments
+			const [extractedContext, cleanedArgs] = extractAndRemoveRpcContext(argArray)
+
+			// Build the context: start with extracted parent context (if any), then add config
+			let context = extractedContext || api_context.active()
+			context = setConfig(config, context)
 
 			const tracer = trace.getTracer('do_rpc_handler')
 			const doName = id.name || id.toString()
@@ -265,7 +276,8 @@ function instrumentRpcHandlerMethod(
 				return tracer.startActiveSpan(spanName, options, async (span) => {
 					try {
 						const bound = target.bind(thisArg)
-						const result = await bound.apply(thisArg, argArray)
+						// Use cleaned args (without context carrier) for the actual method call
+						const result = await bound.apply(thisArg, cleanedArgs)
 						span.setStatus({ code: SpanStatusCode.OK })
 						return result
 					} catch (error) {
