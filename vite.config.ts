@@ -20,6 +20,8 @@ export default defineConfig({
 				// External all node_modules dependencies
 				if (id.startsWith('node:')) return true
 				if (!id.startsWith('.') && !id.startsWith('/')) return true
+				// External test directory
+				if (id.includes('/test/') || id.includes('\\test\\')) return true
 				return false
 			},
 		},
@@ -31,6 +33,7 @@ export default defineConfig({
 		dts({
 			rollupTypes: true,
 			tsconfigPath: './tsconfig.json',
+			exclude: ['test/**/*'],
 		}),
 	],
 })

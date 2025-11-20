@@ -51,5 +51,6 @@
 	"license": "BSD-3-Clause",
 	"lint-staged": {
 		"*": "prettier --ignore-unknown --write"
-	}
+	},
+	"packageManager": "yarn@4.11.0"
 }

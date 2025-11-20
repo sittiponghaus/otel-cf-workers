@@ -5,7 +5,7 @@ import { W3CTraceContextPropagator } from '@opentelemetry/core'
 import { Initialiser, parseConfig, setConfig, ResolvedConfig } from './config.js'
 import { WorkerTracerProvider } from './provider.js'
 import { Trigger, OrPromise, HandlerInstrumentation, ConfigurationOption } from './types.js'
-import { WorkerLoggerProvider } from './logs/provider.js'
+import { WorkerLoggerProvider, getLogger } from './logs/provider.js'
 import { unwrap } from './wrap.js'
 import { WorkerTracer } from './tracer.js'
 
@@ -137,7 +137,6 @@ function createInitialiser(config: ConfigurationOption): Initialiser {
 
 export async function exportTelemetry(traceId: string, tracker?: PromiseTracker) {
 	const tracer = trace.getTracer('export')
-	const { getLogger } = await import('./logs/provider.js')
 	const logger = getLogger('export')
 
 	// Export traces

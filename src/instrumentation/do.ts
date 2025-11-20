@@ -42,7 +42,9 @@ function instrumentRpcMethod(method: Function, methodName: string, nsName: strin
 				attributes,
 			}
 
-			const spanName = `RPC ${nsName}.${methodName}`
+			// Use DO name if available, otherwise namespace
+			const serviceName = stubId.name || nsName
+			const spanName = `RPC ${serviceName}.${methodName}`
 
 			return tracer.startActiveSpan(spanName, options, async (span) => {
 				try {
@@ -272,19 +274,6 @@ function instrumentRpcHandlerMethod(
 			// Get DO name from carrier if available, fall back to id.name
 			const carrierDoName = argArray.length > 0 && extractedContext ? (argArray[0] as any).doName : undefined
 			const doName = carrierDoName || id.name || undefined
-
-			// DEBUG: Log context extraction
-			const carrier = argArray.length > 0 ? argArray[0] : undefined
-			console.log('[DO RPC Server]', {
-				methodName,
-				hasExtractedContext: !!extractedContext,
-				carrierDoName,
-				idName: id.name,
-				finalDoName: doName,
-				argArrayLength: argArray.length,
-				cleanedArgsLength: cleanedArgs.length,
-				carrierHeaders: carrier ? (carrier as any).headers : undefined,
-			})
 
 			// Build the context: start with extracted parent context (if any), then add config
 			let context = extractedContext || api_context.active()
