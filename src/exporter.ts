@@ -14,13 +14,11 @@ export interface OTLPExporterConfig {
 export class OTLPExporter implements SpanExporter {
 	private headers: Record<string, string>
 	private url: string
-	private fetcher: Fetcher['fetch'] = global.fetch
+	private fetcher: Fetcher['fetch']
 	constructor(config: OTLPExporterConfig) {
 		this.url = config.url
 		this.headers = Object.assign({}, DEFAULT_OTLP_HEADERS, config.headers)
-		if (config?.fetcher) {
-			this.fetcher = config.fetcher
-		}
+		this.fetcher = config.fetcher ?? fetch
 	}
 
 	export(items: any[], resultCallback: (result: ExportResult) => void): void {
